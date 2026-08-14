@@ -42,9 +42,27 @@ module.exports = async (req, res) => {
   let zb;
   try {
     const zbRes = await fetch(
-      `https://api.zerobounce.net/v2/validate?api_key=${encodeURIComponent(zbKey)}&email=${encodeURIComponent(email)}`
+      `https://api.zerobounce.net/v2/validate?api_key=${encodeURIComponent(zbKey)}&email=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          // Algunos WAFs delante de APIs tratan distinto el tráfico de IPs de datacenter
+          // (Vercel) sin un User-Agent reconocible; esto evita que devuelvan una página
+          // de challenge en HTML en vez del JSON esperado.
+          'User-Agent': 'Mozilla/5.0 (compatible; TapipayLandingBot/1.0; +https://tapipay.la)',
+        },
+      }
     );
-    zb = await zbRes.json();
+    const rawBody = await zbRes.text();
+    try {
+      zb = JSON.parse(rawBody);
+    } catch {
+      return res.status(502).json({
+        error: 'zerobounce_non_json_response',
+        zbHttpStatus: zbRes.status,
+        detail: rawBody.substring(0, 300),
+      });
+    }
   } catch (err) {
     return res.status(502).json({ error: 'zerobounce_unreachable', detail: String((err && err.message) || err) });
   }
