@@ -21,6 +21,10 @@ const FORM_ID = '9567b32e-4ba1-4a1f-acf1-48952510f6fc'; // Agendar-Demo (producc
 
 // Mismo criterio que las checkboxes configuradas en ZeroBounce > Integrations > HubSpot Forms
 const ACCEPTED_STATUSES = ['valid', 'catch-all', 'unknown'];
+// Todos los status reales que puede devolver ZeroBounce (aceptados + rechazados). Si la
+// respuesta no trae uno de estos strings, NO es una validación real (puede ser un bloqueo
+// del WAF devolviendo JSON tipo {"status":403,...}) — nunca tratarlo como email inválido.
+const KNOWN_ZB_STATUSES = ['valid', 'invalid', 'catch-all', 'unknown', 'spamtrap', 'abuse', 'do_not_mail'];
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -69,6 +73,16 @@ module.exports = async (req, res) => {
 
   if (zb.error) {
     return res.status(502).json({ error: 'zerobounce_error', detail: zb.error });
+  }
+
+  // zbRes.status !== 200 o un status desconocido (ej. {"status":403,...} de un WAF) NO es
+  // una validación real — hay que fallar visiblemente, nunca tratarlo como "email inválido"
+  // (eso rechazaría leads válidos en silencio).
+  if (!KNOWN_ZB_STATUSES.includes(zb.status)) {
+    return res.status(502).json({
+      error: 'zerobounce_unexpected_response',
+      detail: JSON.stringify(zb).substring(0, 300),
+    });
   }
 
   const accepted = ACCEPTED_STATUSES.includes(zb.status);
