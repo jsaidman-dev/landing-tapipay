@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agenda una demo | Tapipay</title>
+  <meta name="description" content="Agenda una demo con Tapipay y automatiza tu cobranza." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand-shadow: #044b47;
+      --brand-green-900: #0a3d2e;
+      --brand-green-800: #01431d;
+      --brand-accent: #04a346;
+      --brand-accent-light: #1fc16b;
+      --bg-mint: #eafaf0;
+      --bg-cream: #f6ffd6;
+      --bg-card: #ffffff;
+      --bg-soft: #f4f7f5;
+      --border: #d2d2d2;
+      --text-dark: #101828;
+      --text-muted: #55655d;
+      --error: #c0392b;
+    }
+    * { font-family: "Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; box-sizing: border-box; }
+    body {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 48px 20px 60px;
+      color: var(--text-dark);
+      background: linear-gradient(160deg, var(--bg-mint) 0%, #ffffff 55%, var(--bg-cream) 100%);
+      min-height: 100vh;
+    }
+    h1 { font-size: 22px; font-weight: 800; color: var(--brand-green-800); margin: 0 0 8px; }
+    p.subtitle { color: var(--text-muted); font-size: 14.5px; margin: 0 0 28px; }
+    .card {
+      background: var(--bg-card);
+      border-radius: 14px;
+      padding: 28px;
+      box-shadow: 0px 24px 60px -20px rgba(4, 75, 71, 0.2);
+    }
+    label { display: block; font-weight: 600; font-size: 13.5px; margin: 16px 0 5px; color: var(--text-dark); }
+    label:first-of-type { margin-top: 0; }
+    input, select {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14.5px;
+      color: var(--text-dark);
+      background: #fff;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--brand-accent-light);
+      box-shadow: 0 0 0 3px rgba(31, 193, 107, 0.15);
+    }
+    input.invalid { border-color: var(--error); }
+    .field-error {
+      display: none;
+      color: var(--error);
+      font-size: 12.5px;
+      font-weight: 500;
+      margin-top: 5px;
+    }
+    .field-error.show { display: block; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .phone-row { display: flex; gap: 8px; }
+    .phone-row select { flex: 0 0 118px; }
+    .phone-row input { flex: 1; }
+    .progress-track { height: 6px; background: var(--bg-soft); border-radius: 3px; margin: 22px 0 5px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--brand-green-800); transition: width .25s ease; }
+    .progress-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; font-weight: 600; }
+    button {
+      margin-top: 12px;
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      background: var(--brand-green-800);
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+    button:hover:not(:disabled) { background: var(--brand-green-900); }
+    button.secondary {
+      background: transparent;
+      color: var(--brand-green-800);
+      border: 1px solid var(--brand-green-800);
+      margin-top: 8px;
+    }
+    button.secondary:hover:not(:disabled) { background: var(--bg-soft); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      display: none;
+    }
+    #status.ok { display: block; background: var(--bg-mint); color: var(--brand-green-800); border: 1px solid var(--brand-accent-light); }
+    #status.error { display: block; background: #fdecea; color: var(--error); border: 1px solid var(--error); }
+    #status.loading { display: block; background: var(--bg-soft); color: var(--text-muted); border: 1px solid var(--border); }
+    .step { display: none; }
+    .step.active { display: block; }
+    .meetings-iframe-container { min-width: 100%; height: 700px; }
+  </style>
+</head>
+<body>
+  <h1>Agenda una demo</h1>
+  <p class="subtitle">Contanos un poco de tu negocio y elegí un horario con nuestro equipo.</p>
+
+  <div class="card">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:50%"></div></div>
+    <div class="progress-label" id="progressLabel">50%</div>
+
+    <form id="step1" class="step active">
+      <div class="row">
+        <div>
+          <label for="firstname">Nombre</label>
+          <input id="firstname" name="firstname" type="text" required />
+        </div>
+        <div>
+          <label for="lastname">Apellido</label>
+          <input id="lastname" name="lastname" type="text" required />
+        </div>
+      </div>
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required />
+      <div id="emailError" class="field-error">Email inválido</div>
+
+      <label for="phone">Teléfono</label>
+      <div class="phone-row">
+        <select id="phoneCode" name="phoneCode">
+          <option value="+52" selected>🇲🇽 +52</option>
+          <option value="+54">🇦🇷 +54</option>
+          <option value="+57">🇨🇴 +57</option>
+          <option value="+56">🇨🇱 +56</option>
+          <option value="+51">🇵🇪 +51</option>
+          <option value="+55">🇧🇷 +55</option>
+          <option value="+593">🇪🇨 +593</option>
+          <option value="+502">🇬🇹 +502</option>
+          <option value="+1">🇺🇸 +1</option>
+          <option value="+1809">🇩🇴 +1</option>
+          <option value="+34">🇪🇸 +34</option>
+        </select>
+        <input id="phone" name="phone" type="tel" required />
+      </div>
+
+      <button type="submit">Siguiente</button>
+    </form>
+
+    <form id="step2" class="step">
+      <label for="companyName">Nombre de la empresa</label>
+      <input id="companyName" name="companyName" type="text" required />
+
+      <label for="companyDomain">Dominio de la empresa</label>
+      <input id="companyDomain" name="companyDomain" type="text" placeholder="tapipay.la" required />
+
+      <label for="monthlyPayments">Cantidad de pagos mensuales</label>
+      <select id="monthlyPayments" name="monthlyPayments" required>
+        <option value="">Selecciona</option>
+        <option value="SOkjB5HskH0XISNMNvSFr">0 - 500</option>
+        <option value="Jy6zV678Su5uUmBRVYuVP">500 - 1000</option>
+        <option value="1000 - 5000">1000 - 5000</option>
+        <option value="+ 5000">+ 5000</option>
+      </select>
+
+      <button id="submitBtn" type="submit">Enviar</button>
+      <button id="backBtn" type="button" class="secondary">Atrás</button>
+    </form>
+
+    <div id="status"></div>
+
+    <div id="step3" class="step">
+      <div class="meetings-iframe-container" data-src="https://meetings.hubspot.com/vianata-betsabe/demo?embed=true"></div>
+      <script type="text/javascript" src="https://static.hsappstatic.net/MeetingsEmbed/ex/MeetingsEmbedCode.js"></script>
+    </div>
+  </div>
+
+  <script>
+    var step1 = document.getElementById("step1");
+    var step2 = document.getElementById("step2");
+    var step3 = document.getElementById("step3");
+    var progressFill = document.getElementById("progressFill");
+    var progressLabel = document.getElementById("progressLabel");
+    var statusEl = document.getElementById("status");
+    var submitBtn = document.getElementById("submitBtn");
+    var emailInput = document.getElementById("email");
+    var emailError = document.getElementById("emailError");
+
+    function setStatus(kind, text) {
+      statusEl.className = kind;
+      statusEl.textContent = text;
+    }
+
+    function showEmailError(text) {
+      emailInput.classList.add("invalid");
+      emailError.textContent = text;
+      emailError.classList.add("show");
+    }
+
+    function clearEmailError() {
+      emailInput.classList.remove("invalid");
+      emailError.classList.remove("show");
+    }
+
+    emailInput.addEventListener("input", clearEmailError);
+
+    function getCookie(name) {
+      var match = document.cookie.match("(?:^|; )" + name + "=([^;]*)");
+      return match ? decodeURIComponent(match[1]) : "";
+    }
+
+    function goToStep(n) {
+      [step1, step2, step3].forEach(function (el) { el.classList.remove("active"); });
+      if (n === 1) step1.classList.add("active");
+      if (n === 2) step2.classList.add("active");
+      if (n === 3) step3.classList.add("active");
+      progressFill.style.width = n === 3 ? "100%" : n === 2 ? "75%" : "50%";
+      progressLabel.textContent = n === 3 ? "100%" : n === 2 ? "75%" : "50%";
+    }
+
+    step1.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      goToStep(2);
+    });
+
+    document.getElementById("backBtn").addEventListener("click", function () {
+      goToStep(1);
+    });
+
+    step2.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      clearEmailError();
+      submitBtn.disabled = true;
+      setStatus("loading", "Validando email…");
+
+      var phoneCode = document.getElementById("phoneCode").value;
+      var phoneNumber = document.getElementById("phone").value.trim();
+
+      fetch("/api/submit-lead-zerobounce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstname: document.getElementById("firstname").value,
+          lastname: document.getElementById("lastname").value,
+          email: emailInput.value,
+          phone: phoneNumber ? phoneCode + " " + phoneNumber : "",
+          companyName: document.getElementById("companyName").value,
+          companyDomain: document.getElementById("companyDomain").value,
+          monthlyPayments: document.getElementById("monthlyPayments").value,
+          pageUri: location.href,
+          pageName: document.title,
+          hutk: getCookie("hubspotutk"),
+        }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          submitBtn.disabled = false;
+          if (data.ok) {
+            setStatus("ok", "✓ Email válido (" + data.zbStatus + ") — abriendo calendario…");
+            setTimeout(function () { goToStep(3); }, 600);
+          } else if (data.reason === "invalid_email") {
+            statusEl.className = "";
+            goToStep(1);
+            showEmailError("Email inválido");
+          } else {
+            setStatus("error", "✗ Error: " + (data.reason || data.error || "desconocido"));
+          }
+        })
+        .catch(function (err) {
+          submitBtn.disabled = false;
+          setStatus("error", "✗ Error de red: " + err.message);
+        });
+    });
+  </script>
+</body>
+</html>
