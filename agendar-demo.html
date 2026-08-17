@@ -154,7 +154,7 @@
         <input id="phone" name="phone" type="tel" required />
       </div>
 
-      <button type="submit">Siguiente</button>
+      <button type="submit" id="nextBtn">Siguiente</button>
     </form>
 
     <form id="step2" class="step">
@@ -186,6 +186,27 @@
   </div>
 
   <script>
+    // Si esta pagina esta embebida en un iframe (ej. Webflow), le avisa al padre la
+    // altura real del contenido para que pueda ajustar el alto del iframe y evitar
+    // scroll doble o espacio vacio. Se dispara solo, ante cualquier cambio visual
+    // (cambio de paso, error mostrado, etc.) via ResizeObserver.
+    (function () {
+      if (window.parent === window) return; // no esta en un iframe, no hace nada
+      function reportHeight() {
+        window.parent.postMessage(
+          { type: "tapipay-agendar-demo-resize", height: document.documentElement.scrollHeight },
+          "*"
+        );
+      }
+      reportHeight();
+      window.addEventListener("load", reportHeight);
+      if (window.ResizeObserver) {
+        new ResizeObserver(reportHeight).observe(document.documentElement);
+      } else {
+        window.addEventListener("resize", reportHeight);
+      }
+    })();
+
     var step1 = document.getElementById("step1");
     var step2 = document.getElementById("step2");
     var step3 = document.getElementById("step3");
@@ -193,6 +214,7 @@
     var progressLabel = document.getElementById("progressLabel");
     var statusEl = document.getElementById("status");
     var submitBtn = document.getElementById("submitBtn");
+    var nextBtn = document.getElementById("nextBtn");
     var emailInput = document.getElementById("email");
     var emailError = document.getElementById("emailError");
 
@@ -228,23 +250,68 @@
       progressLabel.textContent = n === 3 ? "100%" : n === 2 ? "75%" : "50%";
     }
 
+    function currentPhone() {
+      var phoneCode = document.getElementById("phoneCode").value;
+      var phoneNumber = document.getElementById("phone").value.trim();
+      return phoneNumber ? phoneCode + " " + phoneNumber : "";
+    }
+
+    // Paso 1 -> paso 2: valida el email contra ZeroBounce ANTES de dejar avanzar, y si es
+    // válido guarda de una vez un contacto parcial en HubSpot (nombre/apellido/email/tel)
+    // — así el lead ya queda guardado aunque abandone antes de llenar los datos de empresa.
     step1.addEventListener("submit", function (ev) {
       ev.preventDefault();
-      goToStep(2);
+      clearEmailError();
+      nextBtn.disabled = true;
+      setStatus("loading", "Validando email…");
+
+      fetch("/api/save-partial-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstname: document.getElementById("firstname").value,
+          lastname: document.getElementById("lastname").value,
+          email: emailInput.value,
+          phone: currentPhone(),
+        }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          nextBtn.disabled = false;
+          setStatus("", "");
+          if (data.reason === "invalid_email") {
+            // El único motivo real para bloquear el avance: el email no es válido.
+            showEmailError("Email inválido");
+            return;
+          }
+          if (!data.ok) {
+            // Cualquier otro problema (token no seteado, HubSpot caído, red) no debe
+            // trabar al usuario — el contacto parcial es un "nice to have", no un gate.
+            // El envío final del paso 2 va a crear el contacto igual.
+            console.warn("save-partial-contact falló, se avanza igual:", data);
+          }
+          goToStep(2);
+        })
+        .catch(function (err) {
+          nextBtn.disabled = false;
+          setStatus("", "");
+          console.warn("save-partial-contact error de red, se avanza igual:", err);
+          goToStep(2);
+        });
     });
 
     document.getElementById("backBtn").addEventListener("click", function () {
       goToStep(1);
     });
 
+    // Paso 2 -> envío final: el email ya se validó en el paso 1, pero se vuelve a validar
+    // en el backend por si volvió con "Atrás" y lo cambió. Envía el lead completo (contacto +
+    // empresa) al form real de HubSpot y abre el calendario.
     step2.addEventListener("submit", function (ev) {
       ev.preventDefault();
       clearEmailError();
       submitBtn.disabled = true;
-      setStatus("loading", "Validando email…");
-
-      var phoneCode = document.getElementById("phoneCode").value;
-      var phoneNumber = document.getElementById("phone").value.trim();
+      setStatus("loading", "Enviando…");
 
       fetch("/api/submit-lead-zerobounce", {
         method: "POST",
@@ -253,7 +320,7 @@
           firstname: document.getElementById("firstname").value,
           lastname: document.getElementById("lastname").value,
           email: emailInput.value,
-          phone: phoneNumber ? phoneCode + " " + phoneNumber : "",
+          phone: currentPhone(),
           companyName: document.getElementById("companyName").value,
           companyDomain: document.getElementById("companyDomain").value,
           monthlyPayments: document.getElementById("monthlyPayments").value,
@@ -266,7 +333,7 @@
         .then(function (data) {
           submitBtn.disabled = false;
           if (data.ok) {
-            setStatus("ok", "✓ Email válido (" + data.zbStatus + ") — abriendo calendario…");
+            setStatus("ok", "✓ Enviado — abriendo calendario…");
             setTimeout(function () { goToStep(3); }, 600);
           } else if (data.reason === "invalid_email") {
             statusEl.className = "";

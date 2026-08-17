@@ -1,9 +1,14 @@
 // ─────────────────────────────────────────────────────────────
 // api/submit-lead-zerobounce.js — Vercel Serverless Function
-// Recibe un lead del form propio (sin embed de HubSpot), valida el email
-// contra ZeroBounce y, solo si es aceptado, lo reenvía a HubSpot vía la
-// Forms Submission API (server-to-server, no depende de qué editor de
-// forms se usó para armar el form en HubSpot).
+// Se llama al hacer submit final del paso 2 (datos de empresa) en
+// agendar-demo.html. El email ya se validó al hacer click en "Siguiente"
+// (ver api/save-partial-contact.js), pero se vuelve a validar aquí también
+// por si el usuario volvió con "Atrás" y cambió el email — nunca confiar en
+// que el estado del cliente no cambió entre pasos.
+//
+// Reenvía el lead completo a HubSpot vía la Forms Submission API
+// (server-to-server, no depende de qué editor de forms se usó para armar
+// el form en HubSpot).
 //
 // POST body (JSON): { firstname, lastname, email, phone, companyName, companyDomain, monthlyPayments, hutk, pageUri, pageName }
 //
@@ -16,24 +21,16 @@
 // restricción de dominio, ya que esta llamada es server-to-server).
 // ─────────────────────────────────────────────────────────────
 
+const { validateEmail } = require('../lib/zerobounce');
+
 const PORTAL_ID = '49648061';
 const FORM_ID = '9567b32e-4ba1-4a1f-acf1-48952510f6fc'; // Agendar-Demo (producción)
-
-// Mismo criterio que las checkboxes configuradas en ZeroBounce > Integrations > HubSpot Forms
-const ACCEPTED_STATUSES = ['valid', 'catch-all', 'unknown'];
-// Todos los status reales que puede devolver ZeroBounce (aceptados + rechazados). Si la
-// respuesta no trae uno de estos strings, NO es una validación real (puede ser un bloqueo
-// del WAF devolviendo JSON tipo {"status":403,...}) — nunca tratarlo como email inválido.
-const KNOWN_ZB_STATUSES = ['valid', 'invalid', 'catch-all', 'unknown', 'spamtrap', 'abuse', 'do_not_mail'];
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'method_not_allowed' });
   }
-
-  const zbKey = process.env.ZEROBOUNCE_API_KEY;
-  if (!zbKey) return res.status(500).json({ error: 'ZEROBOUNCE_API_KEY not set' });
 
   const payload = req.body || {};
   const {
@@ -43,51 +40,12 @@ module.exports = async (req, res) => {
   } = payload;
   if (!email) return res.status(400).json({ error: 'missing_email' });
 
-  let zb;
-  try {
-    const zbRes = await fetch(
-      `https://api.zerobounce.net/v2/validate?api_key=${encodeURIComponent(zbKey)}&email=${encodeURIComponent(email)}`,
-      {
-        headers: {
-          'Accept': 'application/json',
-          // Algunos WAFs delante de APIs tratan distinto el tráfico de IPs de datacenter
-          // (Vercel) sin un User-Agent reconocible; esto evita que devuelvan una página
-          // de challenge en HTML en vez del JSON esperado.
-          'User-Agent': 'Mozilla/5.0 (compatible; TapipayLandingBot/1.0; +https://tapipay.la)',
-        },
-      }
-    );
-    const rawBody = await zbRes.text();
-    try {
-      zb = JSON.parse(rawBody);
-    } catch {
-      return res.status(502).json({
-        error: 'zerobounce_non_json_response',
-        zbHttpStatus: zbRes.status,
-        detail: rawBody.substring(0, 300),
-      });
-    }
-  } catch (err) {
-    return res.status(502).json({ error: 'zerobounce_unreachable', detail: String((err && err.message) || err) });
+  const zb = await validateEmail(email);
+  if (!zb.ok) {
+    return res.status(zb.httpStatus || 502).json({ error: zb.error, detail: zb.detail, zbHttpStatus: zb.zbHttpStatus });
   }
-
-  if (zb.error) {
-    return res.status(502).json({ error: 'zerobounce_error', detail: zb.error });
-  }
-
-  // zbRes.status !== 200 o un status desconocido (ej. {"status":403,...} de un WAF) NO es
-  // una validación real — hay que fallar visiblemente, nunca tratarlo como "email inválido"
-  // (eso rechazaría leads válidos en silencio).
-  if (!KNOWN_ZB_STATUSES.includes(zb.status)) {
-    return res.status(502).json({
-      error: 'zerobounce_unexpected_response',
-      detail: JSON.stringify(zb).substring(0, 300),
-    });
-  }
-
-  const accepted = ACCEPTED_STATUSES.includes(zb.status);
-  if (!accepted) {
-    return res.status(200).json({ ok: false, reason: 'invalid_email', zbStatus: zb.status, zbSubStatus: zb.sub_status });
+  if (!zb.accepted) {
+    return res.status(200).json({ ok: false, reason: 'invalid_email', zbStatus: zb.zbStatus, zbSubStatus: zb.zbSubStatus });
   }
 
   const fields = [
@@ -128,5 +86,5 @@ module.exports = async (req, res) => {
     return res.status(502).json({ error: 'hubspot_unreachable', detail: String((err && err.message) || err) });
   }
 
-  return res.status(200).json({ ok: true, zbStatus: zb.status });
+  return res.status(200).json({ ok: true, zbStatus: zb.zbStatus });
 };
